@@ -2,17 +2,31 @@ import { v } from "convex/values";
 import { action, mutation, query } from "./_generated/server";
 import { api } from "./_generated/api";
 import OpenAI from "openai";
-import { RateLimiter, MINUTE } from "@convex-dev/rate-limiter";
+import { RateLimiter, MINUTE, HOUR, DAY } from "@convex-dev/rate-limiter";
 import { components } from "./_generated/api";
 import { ConvexError } from "convex/values";
 
-// Initialize rate limiter with 3 requests per minute per IP
+// Initialize rate limiters with multiple time windows
 const rateLimiter = new RateLimiter(components.rateLimiter, {
+  // Per minute limit
   trademarkGeneration: { 
     kind: "token bucket", 
     rate: 3, 
     period: MINUTE, 
     capacity: 3 
+  },
+  // Per hour limit  
+  trademarkGenerationHourly: {
+    kind: "token bucket",
+    rate: 10,
+    period: HOUR,
+    capacity: 10
+  },
+  // Per day limit
+  trademarkGenerationDaily: {
+    kind: "fixed window",
+    rate: 30,
+    period: DAY,
   },
 });
 
@@ -66,17 +80,48 @@ export const generateTrademarks = action({
     ipAddress: v.string(),
   },
   handler: async (ctx, args) => {
-    // Check rate limit
-    const { ok, retryAfter } = await rateLimiter.limit(
+    // Validate fingerprint format
+    if (!args.ipAddress || !args.ipAddress.startsWith('fp-') || args.ipAddress.length < 5) {
+      throw new ConvexError("Invalid request");
+    }
+
+    // Check multiple rate limits
+    const minuteLimit = await rateLimiter.limit(
       ctx, 
       "trademarkGeneration", 
       { key: args.ipAddress }
     );
     
-    if (!ok) {
+    if (!minuteLimit.ok) {
       throw new ConvexError({
-        message: "Rate limit exceeded. Please try again later.",
-        retryAfter,
+        message: "Rate limit exceeded. Please try again in a minute.",
+        retryAfter: minuteLimit.retryAfter,
+      });
+    }
+
+    const hourlyLimit = await rateLimiter.limit(
+      ctx,
+      "trademarkGenerationHourly",
+      { key: args.ipAddress }
+    );
+
+    if (!hourlyLimit.ok) {
+      throw new ConvexError({
+        message: "Hourly limit exceeded. Please try again later.",
+        retryAfter: hourlyLimit.retryAfter,
+      });
+    }
+
+    const dailyLimit = await rateLimiter.limit(
+      ctx,
+      "trademarkGenerationDaily", 
+      { key: args.ipAddress }
+    );
+
+    if (!dailyLimit.ok) {
+      throw new ConvexError({
+        message: "Daily limit reached. Please try again tomorrow.",
+        retryAfter: dailyLimit.retryAfter,
       });
     }
 
@@ -90,27 +135,31 @@ export const generateTrademarks = action({
     }
 
     // Build the prompt
-    const prompt = `Act as a trademark naming specialist. Generate 10 unique brand names for general retail store services suitable for Amazon stores.
+    const prompt = `Act as a trademark naming specialist with deep expertise in ancient Mesopotamian linguistics (Sumerian, Akkadian, Assyrian). Generate 10 brand names for general retail store services.
 
 CRITICAL CONSTRAINTS:
-1. Length must be between 4-9 LETTERS
-2. Must be COINED/INVENTED names that don't exist in USPTO database
+1. NAME LENGTH: Every name MUST be 8 letters or fewer
+2. UNIQUENESS: Do NOT use direct transliterations - names must be significantly modified
 3. Must be easily pronounceable for English speakers
-4. Names should feel modern, memorable, and brandable
+4. Names must be coined/invented words that don't exist in USPTO database
 
-METHODOLOGY:
-- Create completely invented words that sound professional
-- Blend sounds and syllables creatively
-- Focus on euphonic combinations that roll off the tongue
-- Avoid existing words or obvious derivatives
+METHODOLOGY FOR EACH NAME:
+1. Identify a Core Retail Concept: trade, craft, gather, prosper, earth, shine, gateway
+2. Source an Ancient Word: Find Sumerian, Babylonian, or Assyrian word for that concept
+3. Apply Creative Modification:
+   - Shorten the word (e.g., damgār becomes GAR or DAG)
+   - Alter vowels or consonants (e.g., kārum becomes KARUN or KORUM)
+   - Use only evocative syllables
+4. Avoid Common Knowledge: No Ishtar, Babylon, Gilgamesh, Ur, Enki. Focus on obscure words.
 
-Return ONLY a valid JSON array (no markdown, no explanation) with exactly 10 objects. Start with [ and end with ]. Example format:
+Focus on concepts like: merchant (damgār), gate (kā), house (é), strong (dannu), bright (nūru), tablet (ṭuppu), star (mul), place (ašru), craft (nemēqu).
+
+Return ONLY a valid JSON array with exactly 10 objects. Each name should be modern-sounding and suitable for Amazon stores. Format:
 [
-  {"name": "NEXORA", "description": "A fusion of 'next' and 'aurora', suggesting innovation", "industry": "Retail"},
-  {"name": "VELURA", "description": "Combines velvet and allure for premium feel", "industry": "Retail"}
+  {"name": "KARUN", "description": "Modern take on ancient trading post concept", "industry": "Retail"}
 ]
 
-Generate 10 coined, unique names perfect for modern retail businesses.`;
+Create 10 unique, coined names that feel timeless yet modern.`;
 
     try {
       const completion = await openai.chat.completions.create({
@@ -118,7 +167,7 @@ Generate 10 coined, unique names perfect for modern retail businesses.`;
         messages: [
           {
             role: "system",
-            content: "You are a trademark specialist who creates unique, coined brand names. You specialize in inventing names that don't exist in USPTO database. Always return a JSON array with exactly 10 names between 4-9 letters.",
+            content: "You are a trademark specialist with expertise in ancient Mesopotamian linguistics. You create coined, modified names that don't exist in USPTO database by transforming ancient words into modern, brandable names. Always return a JSON array with exactly 10 names, each 8 letters or fewer.",
           },
           {
             role: "user",

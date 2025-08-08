@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "NameForge AI - Trademark Name Generator",
+  title: "Trademarkable - AI Trademark Name Generator",
   description: "Generate unique, USPTO-ready trademark names for Amazon stores and retail businesses. Powered by Ekur AI for instant brand name creation.",
   icons: {
     icon: "/convex.svg",

@@ -1,4 +1,4 @@
-# BrandGen AI - Trademark Name Generator
+# Trademarkable - AI Trademark Name Generator
 
 A modern, elegant web application that generates unique and creative trademark names using OpenAI's GPT-4. Built with Next.js, Convex, and shadcn/ui components.
 
@@ -126,4 +126,8 @@ npx convex deploy
 
 ## License
 
-MIT# Trademarkable
+MIT
+
+## Copyright
+
+© 2025 EKUR LLC. All rights reserved.

@@ -1,14 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAction, useQuery } from "convex/react";
+import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
 import { toast, Toaster } from "sonner";
-import { Sparkles, RefreshCw, Zap, Lightbulb, Target } from "lucide-react";
+import { Sparkles, RefreshCw, Zap, Lightbulb, Target, Copy, Check } from "lucide-react";
 
 interface Trademark {
   name: string;
@@ -18,37 +17,77 @@ interface Trademark {
 
 export default function Home() {
   const [trademarks, setTrademarks] = useState<Trademark[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false); // Start with false - no loading on page load
   const [isGenerating, setIsGenerating] = useState(false);
   const [ipAddress, setIpAddress] = useState("");
+  const [lastClickTime, setLastClickTime] = useState(0);
+  const [copiedName, setCopiedName] = useState<string | null>(null);
   
   const generateTrademarks = useAction(api.trademarks.generateTrademarks);
-  const latestTrademarks = useQuery(api.trademarks.getLatestTrademarks);
+  // Don't query for latest trademarks - only generate when user clicks
+  // const latestTrademarks = useQuery(api.trademarks.getLatestTrademarks);
+
+  // Generate browser fingerprint
+  const generateFingerprint = () => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.textBaseline = 'top';
+      ctx.font = '14px Arial';
+      ctx.fillText('fingerprint', 2, 2);
+    }
+    const canvasData = canvas.toDataURL();
+    
+    const fingerprint = {
+      screen: `${window.screen.width}x${window.screen.height}x${window.screen.colorDepth}`,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      language: navigator.language,
+      userAgent: navigator.userAgent.slice(0, 50),
+      canvas: canvasData.slice(-50), // Last 50 chars of canvas
+    };
+    
+    // Create a simple hash from the fingerprint
+    const str = JSON.stringify(fingerprint);
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    
+    return `fp-${Math.abs(hash).toString(36)}`;
+  };
 
   // Get IP address on mount
   useEffect(() => {
-    // Use localStorage to persist the client ID across page refreshes
-    let clientId = localStorage.getItem("clientId");
-    if (!clientId) {
-      clientId = "client-" + Math.random().toString(36).substring(7);
-      localStorage.setItem("clientId", clientId);
-    }
-    setIpAddress(clientId);
+    // Generate fingerprint for better tracking
+    const fingerprint = generateFingerprint();
+    setIpAddress(fingerprint);
   }, []);
 
-  // Load initial data
-  useEffect(() => {
-    if (ipAddress && !latestTrademarks) {
-      handleGenerate();
-    } else if (latestTrademarks) {
-      setTrademarks(latestTrademarks.names);
-      setIsLoading(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ipAddress, latestTrademarks]);
+  // Remove this useEffect - not needed since isLoading starts as false
+
+  const handleCopy = (name: string) => {
+    navigator.clipboard.writeText(name);
+    setCopiedName(name);
+    toast.success(`"${name}" copied to clipboard!`);
+    
+    // Reset the copied state after 2 seconds
+    setTimeout(() => {
+      setCopiedName(null);
+    }, 2000);
+  };
 
   const handleGenerate = async () => {
     if (!ipAddress) return;
+    
+    // Basic bot detection - check if clicking too fast (less than 500ms)
+    const now = Date.now();
+    if (lastClickTime && (now - lastClickTime) < 500) {
+      toast.error("Please slow down. Try again in a moment.");
+      return;
+    }
+    setLastClickTime(now);
     
     setIsGenerating(true);
     setIsLoading(true);
@@ -65,14 +104,22 @@ export default function Home() {
       
       const errorData = (error as { data?: { message?: string; retryAfter?: number } })?.data;
       
-      if (errorData?.message?.includes("Rate limit")) {
-        const retryTime = errorData.retryAfter;
-        const seconds = retryTime ? Math.ceil((retryTime - Date.now()) / 1000) : 60;
-        toast.error(`Rate limit exceeded. Try again in ${seconds} seconds.`, {
+      if (errorData?.message?.includes("Daily limit")) {
+        toast.error("Daily limit reached. Please try again tomorrow.", {
+          duration: 7000,
+        });
+      } else if (errorData?.message?.includes("Hourly limit")) {
+        toast.error("Hourly limit reached. Please wait a while before trying again.", {
+          duration: 6000,
+        });
+      } else if (errorData?.message?.includes("Rate limit")) {
+        toast.error("Too many requests. Please wait less than a minute.", {
           duration: 5000,
         });
+      } else if (errorData?.message?.includes("Invalid request")) {
+        toast.error("Security validation failed. Please refresh the page.");
       } else if (errorData?.message?.includes("OpenAI API key")) {
-        toast.error("OpenAI API key not configured. Please set up your API key.");
+        toast.error("API key not configured. Please set up your API key.");
       } else {
         toast.error("Failed to generate trademarks. Please try again.");
       }
@@ -97,7 +144,7 @@ export default function Home() {
           </div>
           
           <h1 className="text-5xl font-bold bg-gradient-to-r from-[#2D5EE7] to-indigo-600 bg-clip-text text-transparent">
-            NameForge AI
+            Trademarkable
           </h1>
           
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
@@ -146,7 +193,7 @@ export default function Home() {
         {/* Trademark Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 max-w-7xl mx-auto">
           {isLoading ? (
-            // Skeleton Loading
+            // Skeleton Loading - show when generating
             Array.from({ length: 10 }).map((_, index) => (
               <Card key={index} className="overflow-hidden hover:shadow-lg transition-shadow duration-300">
                 <CardHeader className="pb-3">
@@ -159,38 +206,68 @@ export default function Home() {
                 </CardContent>
               </Card>
             ))
-          ) : (
+          ) : trademarks.length > 0 ? (
             // Actual Trademark Cards
             trademarks.map((trademark, index) => (
               <Card 
                 key={index} 
-                className="overflow-hidden transition-all duration-300 hover:shadow-xl hover:bg-gradient-to-br hover:from-[#2D5EE7]/5 hover:to-indigo-500/5 group"
+                className="overflow-hidden transition-all duration-300 hover:shadow-xl hover:bg-gradient-to-br hover:from-[#2D5EE7]/5 hover:to-indigo-500/5 group relative"
               >
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-xl font-bold bg-gradient-to-r from-[#2D5EE7] to-indigo-600 bg-clip-text text-transparent uppercase tracking-wider">
+                  <CardTitle className="text-xl font-bold bg-gradient-to-r from-[#2D5EE7] to-indigo-600 bg-clip-text text-transparent uppercase tracking-wider pr-8">
                     {trademark.name}
                   </CardTitle>
-                  <Badge 
-                    variant="secondary" 
-                    className="w-fit text-xs bg-gradient-to-r from-blue-100 to-indigo-100 dark:from-blue-900 dark:to-indigo-900"
+                  <Button
+                    onClick={() => handleCopy(trademark.name)}
+                    size="sm"
+                    variant="ghost"
+                    className="absolute top-2 right-2 h-8 w-8 p-0"
+                    title="Copy name"
                   >
-                    {trademark.industry}
-                  </Badge>
+                    {copiedName === trademark.name ? (
+                      <Check className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <Copy className="h-4 w-4 text-gray-500 hover:text-[#2D5EE7]" />
+                    )}
+                  </Button>
                 </CardHeader>
                 <CardContent>
-                  <CardDescription className="text-sm line-clamp-2">
+                  <CardDescription className="text-sm">
                     {trademark.description}
                   </CardDescription>
                 </CardContent>
               </Card>
             ))
+          ) : (
+            // Welcome state - no names generated yet
+            <div className="col-span-full text-center py-12">
+              <div className="max-w-md mx-auto">
+                <Sparkles className="w-12 h-12 text-[#2D5EE7] mx-auto mb-4 opacity-50" />
+                <h3 className="text-lg font-semibold text-muted-foreground mb-2">
+                  Ready to Generate Names
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Click the button above to generate unique trademark names for your business
+                </p>
+              </div>
+            </div>
           )}
         </div>
 
+        {/* Disclaimer */}
+        {trademarks.length > 0 && (
+          <p className="text-xs text-gray-500 text-center mt-6 max-w-2xl mx-auto">
+            These AI-generated names have high uniqueness potential but need to be verified by our trademark expert team 
+            before use to ensure availability and registrability.
+          </p>
+        )}
+
         {/* Footer Info */}
         <div className="mt-12 text-center text-sm text-muted-foreground">
-          <p>Unique coined names • 4-9 letters • USPTO-ready</p>
-          <p className="mt-1">Rate limited to 3 requests per minute • Powered by Ekur AI</p>
+          <p>Unique coined names • Instantly memorable • USPTO-ready</p>
+          <p className="mt-1">Limited to 3 requests per minute • Powered by Ekur AI</p>
+          <p className="mt-4 text-xs">Made with love ❤️ by EKUR Team</p>
+          <p className="mt-1 text-xs">© {new Date().getFullYear()} EKUR LLC. All rights reserved.</p>
         </div>
       </div>
     </div>
