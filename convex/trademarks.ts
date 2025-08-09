@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { action, mutation, query } from "./_generated/server";
 import { api } from "./_generated/api";
 import OpenAI from "openai";
-import { RateLimiter, MINUTE, HOUR, DAY } from "@convex-dev/rate-limiter";
+import { RateLimiter, MINUTE, HOUR } from "@convex-dev/rate-limiter";
 import { components } from "./_generated/api";
 import { ConvexError } from "convex/values";
 
@@ -22,11 +22,11 @@ const rateLimiter = new RateLimiter(components.rateLimiter, {
     period: HOUR,
     capacity: 10
   },
-  // Per day limit
+  // Per day limit (24 hours in milliseconds)
   trademarkGenerationDaily: {
     kind: "fixed window",
     rate: 30,
-    period: DAY,
+    period: 24 * 60 * 60 * 1000, // 24 hours
   },
 });
 
