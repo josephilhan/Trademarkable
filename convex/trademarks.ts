@@ -163,7 +163,7 @@ Create 10 unique, coined names that feel timeless yet modern.`;
 
     try {
       const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
+        model: "gpt-4-turbo",
         messages: [
           {
             role: "system",
