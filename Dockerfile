@@ -1,35 +1,28 @@
-# Multi-stage build for smaller image
-FROM node:20-alpine AS builder
+# Use Node.js 20 Alpine
+FROM node:20-alpine
 
+# Set working directory
 WORKDIR /app
+
+# Set environment variables
+ENV NODE_ENV=production
+ENV NEXT_PUBLIC_CONVEX_URL=https://spotted-viper-423.convex.cloud
+ENV NEXT_TELEMETRY_DISABLED=1
 
 # Copy package files
 COPY package*.json ./
 
-# Install all dependencies (including dev)
-RUN npm ci
+# Install dependencies
+RUN npm install --production=false
 
-# Copy all files
+# Copy all application files
 COPY . .
 
-# Build the application
+# Build the Next.js application
 RUN npm run build
 
-# Production stage
-FROM node:20-alpine AS runner
-
-WORKDIR /app
-
-# Set production environment
-ENV NODE_ENV=production
-ENV NEXT_PUBLIC_CONVEX_URL=https://spotted-viper-423.convex.cloud
-
-# Copy necessary files from builder
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-
+# Expose the port Next.js runs on
 EXPOSE 3000
 
-# Start the application
-CMD ["node", "server.js"]
+# Start Next.js in production mode
+CMD ["npm", "run", "start"]
