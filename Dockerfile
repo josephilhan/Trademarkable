@@ -6,7 +6,7 @@ WORKDIR /app
 
 # Set environment variables
 ENV NODE_ENV=production
-ENV NEXT_PUBLIC_CONVEX_URL=https://spotted-viper-423.convex.cloud
+ENV NEXT_PUBLIC_CONVEX_URL=https://warmhearted-coyote-4.convex.cloud
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # Copy package files
