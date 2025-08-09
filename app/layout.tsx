@@ -17,7 +17,9 @@ export const metadata: Metadata = {
   title: "Trademarkable - AI Trademark Name Generator",
   description: "Generate unique, USPTO-ready trademark names for Amazon stores and retail businesses. Powered by Ekur AI for instant brand name creation.",
   icons: {
-    icon: "/convex.svg",
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+    apple: "/favicon.ico",
   },
 };
 
